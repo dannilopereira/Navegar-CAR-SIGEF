@@ -1,2 +1,89 @@
-PARA A FERRAMENTA FUNCIONAR, DEVE-SE CONVERTER OS SHP'S PARA .JSON
-EXPLODIR O SHP DAS PROPRIEDADES.
+Sempre que atualizar os JSONs ou outros arquivos, faça:
+git add .
+git commit -m "Atualização semanal"
+git push
+
+
+
+
+Para acessar e gerar o link no gitgub.
+1 - Acessar o Repositório
+2 - Clicar em configurações
+3 - Paginas
+4 - Ativar o GitHub Pages
+Filial (Branch) → selecione: principal (equivalente ao main).
+Pasta (Folder) → selecione: / (raiz)
+Isso porque o seu index.html está na raiz do repositório.
+Clique em Salvar (Save)
+
+5 - Esperar alguns minutos, dar um "F5" e copiar o link..
+"Seu site está online em https://dannilopereira.github.io/Navegar-CAR-SIGEF/
+Última publicação por @dannilopereira dannilopereira há 2 minutos"
+
+
+
+EXPLICATIVO GPT:
+
+Guia Visual: Hospedar e acessar Navegar-CAR-SIGEF no GitHub Pages
+1️⃣ Enviar arquivos para o GitHub
+
+Abra o Prompt de Comando na pasta:
+C:\Users\edson-dannilo\Desktop\SCRIPT_NAVEGAR_CAR
+
+Inicialize o Git (se ainda não fez):
+git init
+
+Adicione todos os arquivos:
+git add .
+
+Faça o commit:
+git commit -m "Primeiro envio dos arquivos limpos"
+
+Adicione o repositório remoto:
+git remote add origin https://github.com/dannilopereira/Navegar-CAR-SIGEF.git
+
+Configure o branch principal:
+git branch -M main
+Envie os arquivos para o GitHub:
+
+git push -u origin main
+
+
+2️⃣ Ativar GitHub Pages
+Abra o repositório no navegador:
+https://github.com/dannilopereira/Navegar-CAR-SIGEF
+
+Clique em Configurações (ícone de engrenagem).
+
+No menu lateral esquerdo, clique em Páginas (Pages).
+
+
+Configure a fonte do site:
+
+Filial (Branch): principal
+
+Pasta (Folder): / (raiz)
+
+Clique em Salvar (Save)
+
+3️⃣ Acessar o site
+URL pública gerada pelo GitHub:
+https://dannilopereira.github.io/Navegar-CAR-SIGEF/
+
+Abra no navegador → o index.html vai carregar e os JSONs serão lidos corretamente.
+
+4️⃣ Atualizações semanais
+
+Quando atualizar os JSONs:
+
+Substitua os arquivos na pasta local.
+No Prompt de Comando:
+git add .
+git commit -m "Atualização semanal"
+git push
+O site será atualizado automaticamente.
+
+💡 Dica final: Sempre mantenha os JSONs na mesma pasta do index.html.
+
+Assim, o site vai conseguir ler os dados sem erro.
+

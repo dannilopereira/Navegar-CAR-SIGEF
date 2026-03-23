@@ -698,19 +698,18 @@ for (let j = 0; j < matrizes.length; j++) {
         y += 7;
     };
 
-    // ===============================
-    // 🔥 DADOS SIGEF + DATAS CORRETAS
-    // ===============================
-    linha("Parcela:", s.properties.parcela_co);
-    linha("Situação:", s.properties.situacao_i);
-    linha("Status:", s.properties.status);
-    linha("Fazenda:", s.properties.nome_area);
-
-    linha("Município:", municipioCAR);
-
-    linha("Data Submissão:", formatarData(s.properties.data_submi));
-    linha("Data Aprovação:", formatarData(s.properties.data_aprov));
-    linha("Data Registro:", formatarData(s.properties.registro_d));
+// ===============================
+// 🔥 DADOS SIGEF + DATAS CORRETAS
+// ===============================
+linha("Parcela:", s.properties.parcela_co);
+linha("Matrícula:", s.properties.registro_m);  // <<< ADICIONADO
+linha("Situação:", s.properties.situacao_i);
+linha("Status:", s.properties.status);
+linha("Fazenda:", s.properties.nome_area);
+linha("Município:", municipioCAR);
+linha("Data Submissão:", formatarData(s.properties.data_submi));
+linha("Data Aprovação:", formatarData(s.properties.data_aprov));
+linha("Data Registro:", formatarData(s.properties.registro_d));
 
     // ===============================
     // 🔥 LEGENDA (AGORA DINÂMICA)
