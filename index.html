@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Sistema Técnico CAR – Laudo Profissional</title>
+
+<link rel="icon" type="image/x-icon" href="icone_geo.ico">
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+<style>
+#map { height: 100vh; }
+
+/* PAINEL LATERAL PROFISSIONAL */
+.painel {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: #ffffffee;
+  padding: 15px 18px;
+  z-index: 1000;
+  border-radius: 12px;
+  font-family: "Arial", sans-serif;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+  width: 240px;
+}
+.painel h3 { margin: 8px 0 6px 0; font-size: 14px; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 3px; }
+.painel label { font-weight: bold; font-size: 12px; margin-top: 6px; display:block; }
+.painel input[type=text], .painel select, .painel button { padding: 6px; margin-bottom: 6px; width: 100%; box-sizing: border-box; border-radius: 5px; border: 1px solid #ccc; font-size: 13px; }
+.painel input#cod { margin-bottom: 10px; }
+.painel button { background-color: #0077cc; color: white; border: none; transition: 0.2s; }
+.painel button:hover { background-color: #005fa3; cursor: pointer; }
+.painel .group { margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #eee; }
+.legend { background:white; padding:5px; font-size:12px; line-height:1.4; border-radius:5px; margin-top:6px; }
+.legend span { display:inline-block; width:15px; height:15px; margin-right:5px; border:1px solid #ccc; }
+
+/* ========================= */
+/* ADICIONE DAQUI PRA BAIXO */
+/* ========================= */
+
+/* SETA NORTE */
+.norte {
+  position: absolute;
+  top: 80px;
+  right: 10px;
+  z-index: 1000;
+  width: 60px;
+  opacity: 0.9;
+}
+
+/* ESCALA */
+.escala {
+  position: absolute;
+  bottom: 20px;
+  left: 50px;
+  z-index: 1000;
+  background: rgba(255,255,255,0.85);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: Arial;
+}
+
+.barra-escala {
+  display: flex;
+  height: 8px;
+  margin-bottom: 4px;
+}
+
+.barra-escala div {
+  width: 20px;
+  height: 8px;
+}
+
+.preto { background: #000; }
+.branco { background: #fff; border: 1px solid #000; }
+
+.labels-escala {
+  display: flex;
+  justify-content: space-between;
+}
+</style>
+
+
+</head>
+
+<body>
+
+<div class="painel">
+  <div class="group">
+    <h3>Filtro Propriedades</h3>
+    <input id="cod" placeholder="Digite Código da Propriedade">
+    <button onclick="buscar()">Buscar</button>
+    <button onclick="resetar()">Limpar</button>
+    <button onclick="gerarPDF()">Gerar Relatório</button>
+  </div>
+
+  <div class="group">
+    <h3>Camadas</h3>
+    <label><input type="checkbox" id="toggleProp" checked onchange="toggleLayer(propriedadesLayer)"> Propriedades</label>
+    <label><input type="checkbox" id="toggleCAR" checked onchange="toggleLayer(carLayer)"> CAR</label>
+    <label><input type="checkbox" id="toggleSIGEF" checked onchange="toggleLayer(SIGEFLayer)"> SIGEF</label>
+  </div>
+
+  <div class="group">
+    <h3>Validação</h3>
+    <label><input type="checkbox" id="valCAR" checked> Validar CAR</label>
+    <label><input type="checkbox" id="valSIGEF" checked> Validar SIGEF</label>
+  </div>
+
+  <div class="group">
+    <h3>Mapa de Fundo</h3>
+    <select id="baseMap" onchange="alterarBase()">
+      <option value="satellite">Satélite</option>
+      <option value="street">Street</option>
+      <option value="hybrid">Híbrido</option>
+    </select>
+  </div>
+
+  <div class="group">
+    <h3>Legenda</h3>
+    <div class="legend">
+      <span style="background:#ff0000"></span> Propriedades<br>
+      <span style="background:#00aa00"></span> CAR<br>
+      <span style="background:#8800ff"></span> SIGEF
+    </div>
+  </div>
+</div>
+
+<div id="map"></div>
+
+
+<!-- ========================= -->
+<!-- ESCALA -->
+<!-- ========================= -->
+
+<script>
+// MAPA
+var map = L.map('map',{zoomControl:false, preferCanvas:true}).setView([-21.2,-47.8],10);
+L.control.zoom({position:'topright'}).addTo(map);
+
+// Base layers
+var baseLayers = {
+  "satellite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'),
+  "street": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
+  "hybrid": L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3']})
+};
+baseLayers.satellite.addTo(map);
+
+function alterarBase(){
+  let sel = document.getElementById('baseMap').value;
+  Object.values(baseLayers).forEach(l => map.removeLayer(l));
+  baseLayers[sel].addTo(map);
+}
+
+// Converter ESRI JSON para GeoJSON (BLINDADO)
+function converter(esri){
+  return {
+    type:"FeatureCollection",
+    features: (esri.features || []).map(f=>{
+      try{
+        if(f.geometry && f.geometry.rings){
+          return {
+            type:"Feature",
+            properties:f.attributes || {},
+            geometry:{
+              type:"Polygon",
+              coordinates:f.geometry.rings
+            }
+          };
+        }
+
+        if(f.geometry && f.geometry.coordinates){
+          return {
+            type:"Feature",
+            properties:f.attributes || {},
+            geometry:f.geometry
+          };
+        }
+
+      }catch(e){
+        console.warn("Erro convertendo feature:", e);
+      }
+
+      return null;
+    }).filter(f=>f!==null)
+  };
+}
+
+let dadosGeoJSON, carGeoJSON, SIGEFGeoJSON;
+let propriedadesLayer, carLayer, SIGEFLayer;
+
+// ===========================
+// PROPRIEDADES
+// ===========================
+fetch('PROPRIEDADES.json?t=' + Date.now(), { cache: "no-store" })
+  .then(r => r.json())
+  .then(json => {
+    dadosGeoJSON = converter(json);
+    console.log("PROPRIEDADES carregadas:", dadosGeoJSON);
+
+    propriedadesLayer = L.geoJSON(dadosGeoJSON,{
+      style:{color:"#0066ff",weight:2,fillOpacity:0}
+    }).addTo(map);
+
+    map.fitBounds(propriedadesLayer.getBounds());
+  })
+  .catch(e => console.error("Erro PROPRIEDADES:", e));
+
+// ===========================
+// CAR
+// ===========================
+fetch('CAR.json?t=' + Date.now(), { cache: "no-store" })
+  .then(r => r.json())
+  .then(json => {
+    carGeoJSON = converter(json);
+    console.log("CAR carregado:", carGeoJSON);
+
+    carLayer = L.geoJSON(carGeoJSON,{
+      style:{color:"#00aa00",weight:1,fillColor:"#00ff00",fillOpacity:0.15}
+    }).addTo(map);
+  })
+  .catch(e => console.error("Erro CAR:", e));
+
+// ===========================
+// SIGEF
+// ===========================
+fetch('SIGEF.json?t=' + Date.now(), { cache: "no-store" })
+  .then(r => r.json())
+  .then(json => {
+    SIGEFGeoJSON = converter(json);
+    console.log("SIGEF carregado:", SIGEFGeoJSON);
+
+    SIGEFLayer = L.geoJSON(SIGEFGeoJSON,{
+      style:{color:"#8800ff",weight:1,fillColor:"#aa00ff",fillOpacity:0.15}
+    }).addTo(map);
+  })
+  .catch(e => console.error("Erro SIGEF:", e));
+
+// ===========================
+// TOGGLE CAMADAS (PROTEGIDO)
+// ===========================
+function toggleLayer(layer){
+  if(!layer) return;
+  if(map.hasLayer(layer)) map.removeLayer(layer);
+  else map.addLayer(layer);
+}
+
+// BUSCAR
+let destaqueProps = null;
+function buscar(){
+  let cod = document.getElementById("cod").value.trim();
+  if(destaqueProps){ map.removeLayer(destaqueProps); destaqueProps=null; }
+  let filtrado = dadosGeoJSON.features.filter(f => String(f.properties.PROP_CODIG)===cod);
+  if(filtrado.length){
+    destaqueProps = L.geoJSON(filtrado,{style:{color:"red",weight:4,fillOpacity:0}}).addTo(map);
+    destaqueProps.bringToFront();
+    let bounds = L.featureGroup(filtrado.map(f=>L.geoJSON(f))).getBounds();
+    map.fitBounds(bounds);
+  }
+}
+
+function resetar(){ if(destaqueProps){ map.removeLayer(destaqueProps); destaqueProps=null; } map.fitBounds(propriedadesLayer.getBounds()); }
+
+// PDF PROFISSIONAL
+async function gerarPDF(){
+  const { jsPDF } = window.jspdf;
+
+  // ---------------------------
+  // ENTRADA PRIMEIRO (evita PDF vazio)
+  // ---------------------------
+  let codigos = prompt("Digite os códigos separados por vírgula:");
+  if(!codigos) return;
+
+  let lista = codigos.split(",").map(c => c.trim()).filter(c => c);
+  if(lista.length === 0) return;
+
+  let pdf = new jsPDF();
+
+  // ---------------------------
+  // CAPA
+  // ---------------------------
+  let capa = new Image();
+  capa.src = "imagem_capa.png"; // mesma pasta do HTML
+
+  await new Promise(resolve => {
+    capa.onload = resolve;
+  });
+
+  pdf.addImage(capa, 'PNG', 0, 0, 210, 297);
+  
+
+  // ---------------------------
+  // RESTANTE DO SCRIPT
+  // ---------------------------
+  let validarCAR = document.getElementById("valCAR").checked;
+  let validarSIGEF = document.getElementById("valSIGEF").checked;
+
+  for(let i = 0; i < lista.length; i++){
+    let cod = lista[i];
+    let props = dadosGeoJSON.features.filter(f => String(f.properties.PROP_CODIG) === cod);
+    // ---------------------------
+    // CAR
+    // ---------------------------
+    if(validarCAR && carGeoJSON){
+      let carPorPoligono = {};
+      for(let p of props){
+        let geoms = p.geometry.type==="Polygon"? [p] : p.geometry.coordinates.map(c=>({type:"Feature",properties:p.properties,geometry:{type:"Polygon",coordinates:c}}));
+        geoms.forEach(pol=>{
+          let centroide = turf.centroid(pol);
+          carGeoJSON.features.forEach(car=>{
+            let inter = turf.intersect(pol, car);
+            if(!inter) return;
+            let areaPol = turf.area(pol);
+            let areaCar = turf.area(car);
+            let areaInter = turf.area(inter);
+            if(turf.booleanPointInPolygon(centroide, car) || areaInter/areaPol >=0.2 || areaInter/areaCar>=0.6){
+              if(!carPorPoligono[car.properties.cod_imovel]) carPorPoligono[car.properties.cod_imovel]=[];
+              if(!carPorPoligono[car.properties.cod_imovel].includes(pol)) carPorPoligono[car.properties.cod_imovel].push(pol);
+            }
+          });
+        });
+      }
+
+let codsCAR = Object.keys(carPorPoligono);
+
+if(codsCAR.length===0){
+  pdf.setFontSize(12);
+  pdf.text(`Propriedade ${cod} - NÃO encontrou CAR`,10,20);
+  if(i<lista.length-1) pdf.addPage();
+}
+
+for(let j=0;j<codsCAR.length;j++){
+
+  // 👉 AQUI É O PONTO CERTO
+  if(i === 0 && j === 0){
+    pdf.addPage();
+  }
+
+  let codCar = codsCAR[j];
+  let car = carGeoJSON.features.find(c=>c.properties.cod_imovel===codCar);
+  let poligonos = carPorPoligono[codCar];
+
+  pdf.setFont("helvetica","bold");
+  pdf.setFontSize(16);
+  pdf.text("RELATÓRIO TÉCNICO - VALIDAÇÃO CAR",10,15);
+
+  pdf.setFontSize(12);
+  pdf.text(`Propriedade: ${cod}`,10,25);
+
+  pdf.setLineWidth(0.5);
+  pdf.line(10,28,200,28);
+
+  let y=40;
+  const linha = (label,valor)=>{
+    pdf.setFont("helvetica","bold");
+    pdf.text(label,10,y);
+    pdf.setFont("helvetica","normal");
+    pdf.text(String(valor||"-"),60,y);
+    y+=8;
+  };
+
+  linha("Código Imóvel:",car.properties.cod_imovel);
+  linha("Condição:",car.properties.des_condic);
+  linha("Município:",car.properties.municipio);
+  linha("Data Criação:",car.properties.dat_criaca);
+  linha("Data Atualização:",car.properties.dat_atuali);
+
+  // LEGENDA
+  pdf.setFont("helvetica","bold");
+  pdf.setFontSize(11);
+
+  pdf.setFillColor(0,170,0);
+  pdf.rect(10,78,5,4,'F');
+  pdf.setFont("helvetica","normal");
+  pdf.text("CAR",18,81.6);
+
+  pdf.setFillColor(255,0,0);
+  pdf.rect(40,78,5,4,'F');
+  pdf.text("UAM",48,81.6);
+
+  pdf.setFillColor(0,0,0);
+  pdf.rect(70,78,5,4,'F');
+  pdf.text("ALVO",78,81.6);
+
+  let cores = ["#00FFFF","#FF00FF","#FFFF00","#00FF00","#FF8800","#0088FF"];
+
+  let destaqueCAR = L.geoJSON(car,{
+    style:{color:"#000000",weight:4,fillColor:"#000000",fillOpacity:0.35}
+  }).addTo(map);
+
+  let camadasPoligonos = [];
+  poligonos.forEach((pol,index)=>{
+    let cor=index===0?"#ff0000":cores[index % cores.length];
+    camadasPoligonos.push(
+      L.geoJSON(pol,{
+        style:{color:cor,weight:3,fillColor:cor,fillOpacity:0.25}
+      }).addTo(map)
+    );
+  });
+
+  destaqueCAR.bringToFront();
+
+  let bounds = L.featureGroup([destaqueCAR,...camadasPoligonos]).getBounds().pad(0.3);
+  map.fitBounds(bounds);
+
+  setTimeout(()=>{map.panBy([120,0]);},300);
+
+  await new Promise(r=>setTimeout(r,1800));
+
+  map.invalidateSize();
+  await new Promise(r=>setTimeout(r,500));
+
+  // ===============================
+  // 🔥 NORTE + ESCALA (AQUI É O PONTO CERTO)
+  // ===============================
+
+  if(window.northControl) map.removeControl(window.northControl);
+  if(window.scaleControl) map.removeControl(window.scaleControl);
+
+  window.northControl = L.control({position:'topright'});
+  window.northControl.onAdd = function(){
+    let div = L.DomUtil.create('div');
+    div.innerHTML = `
+      <div style="
+        background:white;
+        padding:6px;
+        border-radius:6px;
+        box-shadow:0 0 5px rgba(0,0,0,0.5);
+        text-align:center;
+        font-weight:bold;
+        font-size:14px;
+      ">
+        ↑<br>N
+      </div>
+    `;
+    return div;
+  };
+  window.northControl.addTo(map);
+
+  window.scaleControl = L.control.scale({
+    position:'bottomleft',
+    metric:true,
+    imperial:false,
+    maxWidth:100
+  });
+  window.scaleControl.addTo(map);
+
+  // pequena espera pra garantir renderização
+  await new Promise(r=>setTimeout(r,400));
+
+  // ===============================
+  // CAPTURA
+  // ===============================
+  let canvas = await html2canvas(document.getElementById("map"),{
+    useCORS:true,
+    allowTaint:true,
+    backgroundColor:null
+  });
+
+  let img = canvas.toDataURL("image/png");
+
+  // LIMPEZA
+  map.removeLayer(destaqueCAR);
+  camadasPoligonos.forEach(l=>map.removeLayer(l));
+
+  if(window.northControl) map.removeControl(window.northControl);
+  if(window.scaleControl) map.removeControl(window.scaleControl);
+
+  // PDF
+  pdf.setLineWidth(0.3);
+  pdf.rect(10,85,190,105);
+  pdf.addImage(img,'PNG',10,85,190,105);
+
+  let dataAtual = new Date().toLocaleDateString();
+  pdf.setFontSize(9);
+  pdf.text(`Gerado em: ${dataAtual}`,10,200);
+  pdf.text("Sistema de Validação UAM/CAR",140,200);
+
+  if(j<codsCAR.length-1) pdf.addPage();
+}
+    }
+// Só cria nova página se realmente for gerar SIGEF
+let gerouPaginaAnterior = pdf.getNumberOfPages();
+
+if (validarSIGEF && SIGEFGeoJSON) {
+  if (pdf.getNumberOfPages() > 0) pdf.addPage();
+}
+
+
+// ---------------------------
+// SIGEF – CENTROIDE + MAIOR PARTE (CORRIGIDO)
+// ---------------------------
+if (validarSIGEF && SIGEFGeoJSON) {
+
+    function extrairPoligonos(feature){
+        if(!feature.geometry) return [];
+        if(feature.geometry.type==="Polygon") return [feature];
+        if(feature.geometry.type==="MultiPolygon"){
+            return feature.geometry.coordinates.map(coords => ({
+                type:"Feature",
+                properties: feature.properties,
+                geometry: { type:"Polygon", coordinates: coords }
+            }));
+        }
+        return [];
+    }
+
+    let SIGEFPorPoligono = {};
+    let capturadas = new Set();
+    let capturadasGeometria = new Set();
+
+    // ---------------------------
+    // 1) CENTROIDE
+    // ---------------------------
+    for (let p of props) {
+        let geomsUAM = extrairPoligonos(p);
+
+        geomsUAM.forEach(polUAM => {
+            SIGEFGeoJSON.features.forEach(s => {
+
+                let parcela = s.properties.parcela_co;
+                let SIGEFPols = extrairPoligonos(s);
+
+                SIGEFPols.forEach(sp => {
+
+                    if (capturadasGeometria.has(sp)) return;
+
+                    try {
+                        let centroide = turf.centroid(sp);
+
+                        if (turf.booleanPointInPolygon(centroide, polUAM)) {
+
+                            if (!SIGEFPorPoligono[parcela]) {
+                                SIGEFPorPoligono[parcela] = [];
+                            }
+
+                            SIGEFPorPoligono[parcela].push(sp);
+                            capturadas.add(parcela);
+                            capturadasGeometria.add(sp);
+                        }
+
+                    } catch (e) {
+                        console.warn("Erro centroide SIGEF:", parcela, e);
+                    }
+
+                });
+            });
+        });
+    }
+
+    // ---------------------------
+    // 2) MAIOR PARTE
+    // ---------------------------
+    for (let p of props) {
+        let geomsUAM = extrairPoligonos(p);
+
+        geomsUAM.forEach(polUAM => {
+            SIGEFGeoJSON.features.forEach(s => {
+
+                let parcela = s.properties.parcela_co;
+                let SIGEFPols = extrairPoligonos(s);
+
+                SIGEFPols.forEach(sp => {
+
+                    if (capturadasGeometria.has(sp)) return;
+
+                    try {
+                        let areaSIGEF = turf.area(sp);
+                        let inter = turf.intersect(sp, polUAM);
+
+                        if (inter) {
+                            let areaInter = turf.area(inter);
+
+                            if (areaInter / areaSIGEF > 0.5) {
+
+                                if (!SIGEFPorPoligono[parcela]) {
+                                    SIGEFPorPoligono[parcela] = [];
+                                }
+
+                                SIGEFPorPoligono[parcela].push(sp);
+                                capturadas.add(parcela);
+                                capturadasGeometria.add(sp);
+                            }
+                        }
+
+                    } catch (e) {
+                        console.warn("Erro área SIGEF:", parcela, e);
+                    }
+
+                });
+            });
+        });
+    }
+
+// ---------------------------
+// GERAÇÃO PDF
+// ---------------------------
+let matrizes = Object.keys(SIGEFPorPoligono).sort();
+
+if (matrizes.length === 0) {
+    pdf.setFontSize(12);
+    pdf.text(`Propriedade ${cod} - NÃO encontrou SIGEF`, 10, 20);
+    if (i < lista.length - 1) pdf.addPage();
+}
+
+// ===============================
+// 🔥 FUNÇÃO FORMATAR DATA (CORREÇÃO PRINCIPAL)
+// ===============================
+function formatarData(valor){
+    if(!valor) return "-";
+
+    // Se vier timestamp (número grande)
+    if(typeof valor === "number"){
+        let d = new Date(valor);
+        if(!isNaN(d)) return d.toLocaleDateString();
+    }
+
+    // Se vier string numérica
+    if(!isNaN(valor)){
+        let d = new Date(Number(valor));
+        if(!isNaN(d)) return d.toLocaleDateString();
+    }
+
+    // Se já for data ISO
+    let d = new Date(valor);
+    if(!isNaN(d)) return d.toLocaleDateString();
+
+    return valor;
+}
+
+for (let j = 0; j < matrizes.length; j++) {
+
+    let parcela = matrizes[j];
+    let poligonos = SIGEFPorPoligono[parcela];
+
+    if (poligonos.length === 0) continue;
+
+    let polValido = poligonos[0];
+
+    let s = {
+        type: "Feature",
+        properties: polValido.properties,
+        geometry: polValido.geometry
+    };
+
+    // ===============================
+    // 🔥 BUSCAR MUNICÍPIO VIA CAR
+    // ===============================
+    let municipioCAR = "-";
+
+    if(carGeoJSON){
+        try{
+            let interCAR = carGeoJSON.features.find(c=>{
+                try{
+                    return turf.intersect(c, s);
+                }catch(e){
+                    return false;
+                }
+            });
+
+            if(interCAR && interCAR.properties.municipio){
+                municipioCAR = interCAR.properties.municipio;
+            }
+        }catch(e){
+            console.warn("Erro buscando município:", e);
+        }
+    }
+
+    // ===============================
+    // CABEÇALHO
+    // ===============================
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(16);
+    pdf.text("RELATÓRIO TÉCNICO - VALIDAÇÃO SIGEF", 10, 15);
+
+    pdf.setFontSize(12);
+    pdf.text(`Propriedade: ${cod}`, 10, 25);
+
+    pdf.setLineWidth(0.5);
+    pdf.line(10,28,200,28);
+
+    // ===============================
+    // 🔥 CONTROLE DINÂMICO DE LINHA
+    // ===============================
+    let y = 40;
+
+    const linha = (l, v) => {
+        pdf.setFont("helvetica", "bold");
+        pdf.text(l, 10, y);
+
+        pdf.setFont("helvetica", "normal");
+        pdf.text(String(v || "-"), 70, y);
+
+        y += 7;
+    };
+
+    // ===============================
+    // 🔥 DADOS SIGEF + DATAS CORRETAS
+    // ===============================
+    linha("Parcela:", s.properties.parcela_co);
+    linha("Situação:", s.properties.situacao_i);
+    linha("Status:", s.properties.status);
+    linha("Fazenda:", s.properties.nome_area);
+
+    linha("Município:", municipioCAR);
+
+    linha("Data Submissão:", formatarData(s.properties.data_submi));
+    linha("Data Aprovação:", formatarData(s.properties.data_aprov));
+    linha("Data Registro:", formatarData(s.properties.registro_d));
+
+    // ===============================
+    // 🔥 LEGENDA (AGORA DINÂMICA)
+    // ===============================
+    let yLegenda = y + 5;
+
+    pdf.setFont("helvetica","bold");
+    pdf.setFontSize(11);
+
+    pdf.setFillColor(136,0,255);
+    pdf.rect(10,yLegenda,5,4,'F');
+    pdf.setFont("helvetica","normal");
+    pdf.text("SIGEF",17,yLegenda+3);
+
+    pdf.setFillColor(255,0,0);
+    pdf.rect(40,yLegenda,5,4,'F');
+    pdf.text("UAM",47,yLegenda+3);
+
+    pdf.setFillColor(0,0,0);
+    pdf.rect(70,yLegenda,5,4,'F');
+    pdf.text("ALVO",77,yLegenda+3);
+
+    // ===============================
+    // 🔥 POSIÇÃO DO MAPA (NÃO COLIDE MAIS)
+    // ===============================
+    let yMapa = yLegenda + 10;
+
+    let cores = ["#00FFFF","#FF00FF","#FFFF00","#00FF00","#FF8800","#0088FF"];
+
+    let destaqueProp = L.geoJSON(props, {
+        style:{color:"red", weight:4, fillOpacity:0}
+    }).addTo(map);
+
+    let destaqueS = L.geoJSON(s, {
+        style:{color:"#000000", weight:4, fillColor:"#000000", fillOpacity:0.35}
+    }).addTo(map);
+
+    let camadasPoligonos = [];
+    poligonos.forEach((pol,index)=>{
+        let cor = index === 0 ? "#8800ff" : cores[index % cores.length];
+
+        let layer = L.geoJSON(pol,{
+            style:{
+                color: cor,
+                weight: 3,
+                fillColor: cor,
+                fillOpacity: 0.25
+            }
+        }).addTo(map);
+
+        camadasPoligonos.push(layer);
+    });
+
+    destaqueS.bringToFront();
+
+    let bounds = L.featureGroup([
+        destaqueProp,
+        destaqueS,
+        ...camadasPoligonos
+    ]).getBounds().pad(0.3);
+
+    map.fitBounds(bounds);
+
+    setTimeout(()=>{ map.panBy([120,0]); },300);
+    await new Promise(r=>setTimeout(r,1800));
+
+    map.invalidateSize();
+    await new Promise(r=>setTimeout(r,500));
+
+    let canvas = await html2canvas(document.getElementById("map"),{
+        useCORS:true,
+        allowTaint:true,
+        backgroundColor:null
+    });
+
+    let img = canvas.toDataURL("image/png");
+
+    // LIMPEZA
+    map.removeLayer(destaqueProp);
+    map.removeLayer(destaqueS);
+    camadasPoligonos.forEach(l=>map.removeLayer(l));
+
+    // ===============================
+    // 🔥 INSERÇÃO CORRETA NO PDF
+    // ===============================
+    pdf.setLineWidth(0.3);
+    pdf.rect(10, yMapa, 190, 105);
+    pdf.addImage(img, 'PNG', 10, yMapa, 190, 105);
+
+    // RODAPÉ
+    let dataAtual = new Date().toLocaleDateString();
+    pdf.setFontSize(9);
+    pdf.text(`Gerado em: ${dataAtual}`,10,yMapa+115);
+    pdf.text("Sistema de Validação UAM/SIGEF",140,yMapa+115);
+
+    if (j < matrizes.length - 1) pdf.addPage();
+}
+}
+
+if(i<lista.length-1) pdf.addPage();
+}
+
+pdf.save(`${lista[0]} - Relatório UAM vs CAR-SIGEF.pdf`);
+}
+</script>
+</body>
+</html>
