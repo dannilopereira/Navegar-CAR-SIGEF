@@ -514,25 +514,31 @@ if (validarSIGEF && SIGEFGeoJSON) {
     let capturadasGeometria = new Set();
 
     // ---------------------------
-    // 1) CENTROIDE
+    // 1) CENTROIDE/MAIOR PARTE/REGRAS
     // ---------------------------
-    for (let p of props) {
-        let geomsUAM = extrairPoligonos(p);
+for (let p of props) {
+    let geomsUAM = extrairPoligonos(p);
 
-        geomsUAM.forEach(polUAM => {
-            SIGEFGeoJSON.features.forEach(s => {
+    geomsUAM.forEach(polUAM => {
+        SIGEFGeoJSON.features.forEach(s => {
 
-                let parcela = s.properties.parcela_co;
-                let SIGEFPols = extrairPoligonos(s);
+            let parcela = s.properties.parcela_co;
+            let SIGEFPols = extrairPoligonos(s);
 
-                SIGEFPols.forEach(sp => {
+            SIGEFPols.forEach(sp => {
 
-                    if (capturadasGeometria.has(sp)) return;
+                if (capturadasGeometria.has(sp)) return;
 
-                    try {
-                        let centroide = turf.centroid(sp);
+                try {
+                    let areaSIGEF = turf.area(sp);
+                    let inter = turf.intersect(sp, polUAM);
 
-                        if (turf.booleanPointInPolygon(centroide, polUAM)) {
+                    if (inter) {
+                        let areaInter = turf.area(inter);
+                        let areaPol = turf.area(polUAM);
+
+                        // 🔹 NOVA REGRA: considerar se >50% da SIGEF ou >20% da UAM
+                        if (areaInter / areaSIGEF > 0.5 || areaInter / areaPol >= 0.2) {
 
                             if (!SIGEFPorPoligono[parcela]) {
                                 SIGEFPorPoligono[parcela] = [];
@@ -542,15 +548,16 @@ if (validarSIGEF && SIGEFGeoJSON) {
                             capturadas.add(parcela);
                             capturadasGeometria.add(sp);
                         }
-
-                    } catch (e) {
-                        console.warn("Erro centroide SIGEF:", parcela, e);
                     }
 
-                });
+                } catch (e) {
+                    console.warn("Erro área SIGEF:", parcela, e);
+                }
+
             });
         });
-    }
+    });
+}
 
     // ---------------------------
     // 2) MAIOR PARTE
