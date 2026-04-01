@@ -514,53 +514,7 @@ if (validarSIGEF && SIGEFGeoJSON) {
     let capturadasGeometria = new Set();
 
     // ---------------------------
-    // 1) CENTROIDE/MAIOR PARTE/REGRAS
-    // ---------------------------
-for (let p of props) {
-    let geomsUAM = extrairPoligonos(p);
-
-    geomsUAM.forEach(polUAM => {
-        SIGEFGeoJSON.features.forEach(s => {
-
-            let parcela = s.properties.parcela_co;
-            let SIGEFPols = extrairPoligonos(s);
-
-            SIGEFPols.forEach(sp => {
-
-                if (capturadasGeometria.has(sp)) return;
-
-                try {
-                    let areaSIGEF = turf.area(sp);
-                    let inter = turf.intersect(sp, polUAM);
-
-                    if (inter) {
-                        let areaInter = turf.area(inter);
-                        let areaPol = turf.area(polUAM);
-
-                        // 🔹 NOVA REGRA: considerar se >50% da SIGEF ou >20% da UAM
-                        if (areaInter / areaSIGEF > 0.5 || areaInter / areaPol >= 0.2) {
-
-                            if (!SIGEFPorPoligono[parcela]) {
-                                SIGEFPorPoligono[parcela] = [];
-                            }
-
-                            SIGEFPorPoligono[parcela].push(sp);
-                            capturadas.add(parcela);
-                            capturadasGeometria.add(sp);
-                        }
-                    }
-
-                } catch (e) {
-                    console.warn("Erro área SIGEF:", parcela, e);
-                }
-
-            });
-        });
-    });
-}
-
-    // ---------------------------
-    // 2) MAIOR PARTE
+    // 1) CENTROIDE + INTERSEÇÃO
     // ---------------------------
     for (let p of props) {
         let geomsUAM = extrairPoligonos(p);
@@ -577,13 +531,32 @@ for (let p of props) {
 
                     try {
                         let areaSIGEF = turf.area(sp);
-                        let inter = turf.intersect(sp, polUAM);
 
-                        if (inter) {
-                            let areaInter = turf.area(inter);
+                        let centroideSIGEF = turf.centroid(sp);
+                        let dentro = false;
 
-                            if (areaInter / areaSIGEF > 0.5) {
+                        try {
+                            dentro = turf.booleanPointInPolygon(centroideSIGEF, polUAM);
+                        } catch(e){
+                            dentro = false;
+                        }
 
+                        let inter = null;
+                        try {
+                            inter = turf.intersect(sp, polUAM);
+                        } catch(e){
+                            inter = null;
+                        }
+
+                        if (inter || dentro) {
+                            let areaInter = inter ? turf.area(inter) : 0;
+                            let areaPol = turf.area(polUAM);
+
+                            if (
+                                dentro ||
+                                areaInter / areaSIGEF > 0.5 ||
+                                areaInter / areaPol >= 0.2
+                            ) {
                                 if (!SIGEFPorPoligono[parcela]) {
                                     SIGEFPorPoligono[parcela] = [];
                                 }
@@ -603,16 +576,79 @@ for (let p of props) {
         });
     }
 
-// ---------------------------
-// GERAÇÃO PDF
-// ---------------------------
-let matrizes = Object.keys(SIGEFPorPoligono).sort();
+    // ---------------------------
+    // 2) MAIOR PARTE (REFORÇO)
+    // ---------------------------
+    for (let p of props) {
+        let geomsUAM = extrairPoligonos(p);
 
-if (matrizes.length === 0) {
-    pdf.setFontSize(12);
-    pdf.text(`Propriedade ${cod} - NÃO encontrou SIGEF`, 10, 20);
-    if (i < lista.length - 1) pdf.addPage();
-}
+        geomsUAM.forEach(polUAM => {
+            SIGEFGeoJSON.features.forEach(s => {
+
+                let parcela = s.properties.parcela_co;
+                let SIGEFPols = extrairPoligonos(s);
+
+                SIGEFPols.forEach(sp => {
+
+                    if (capturadasGeometria.has(sp)) return;
+
+                    try {
+                        let areaSIGEF = turf.area(sp);
+
+                        let centroideSIGEF = turf.centroid(sp);
+                        let dentro = false;
+
+                        try {
+                            dentro = turf.booleanPointInPolygon(centroideSIGEF, polUAM);
+                        } catch(e){
+                            dentro = false;
+                        }
+
+                        let inter = null;
+                        try {
+                            inter = turf.intersect(sp, polUAM);
+                        } catch(e){
+                            inter = null;
+                        }
+
+                        if (inter || dentro) {
+                            let areaInter = inter ? turf.area(inter) : 0;
+
+                            if (
+                                dentro ||
+                                areaInter / areaSIGEF > 0.5
+                            ) {
+                                if (!SIGEFPorPoligono[parcela]) {
+                                    SIGEFPorPoligono[parcela] = [];
+                                }
+
+                                SIGEFPorPoligono[parcela].push(sp);
+                                capturadas.add(parcela);
+                                capturadasGeometria.add(sp);
+                            }
+                        }
+
+                    } catch (e) {
+                        console.warn("Erro área SIGEF:", parcela, e);
+                    }
+
+                });
+            });
+        });
+    }
+
+    // 🔥 AGORA SIM — DENTRO DO IF
+    // ---------------------------
+    // GERAÇÃO PDF
+    // ---------------------------
+    let matrizes = Object.keys(SIGEFPorPoligono).sort();
+
+    if (matrizes.length === 0) {
+        pdf.setFontSize(12);
+        pdf.text(`Propriedade ${cod} - NÃO encontrou SIGEF`, 10, 20);
+        if (i < lista.length - 1) pdf.addPage();
+    }
+
 
 // ===============================
 // 🔥 FUNÇÃO FORMATAR DATA (CORREÇÃO PRINCIPAL)
