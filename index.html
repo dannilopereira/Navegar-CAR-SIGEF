@@ -254,7 +254,7 @@ let destaqueProps = null;
 function buscar(){
   let cod = document.getElementById("cod").value.trim();
   if(destaqueProps){ map.removeLayer(destaqueProps); destaqueProps=null; }
-  let filtrado = dadosGeoJSON.features.filter(f => String(f.properties.PROP_CODIG)===cod);
+  let filtrado = dadosGeoJSON.features.filter(f => String(f.properties.PROP_CODIGO)===cod);
   if(filtrado.length){
     destaqueProps = L.geoJSON(filtrado,{style:{color:"red",weight:4,fillOpacity:0}}).addTo(map);
     destaqueProps.bringToFront();
@@ -301,7 +301,7 @@ async function gerarPDF(){
 
   for(let i = 0; i < lista.length; i++){
     let cod = lista[i];
-    let props = dadosGeoJSON.features.filter(f => String(f.properties.PROP_CODIG) === cod);
+    let props = dadosGeoJSON.features.filter(f => String(f.properties.PROP_CODIGO) === cod);
     // ---------------------------
     // CAR
     // ---------------------------
